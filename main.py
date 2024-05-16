@@ -5,7 +5,9 @@ from selenium.webdriver.common.by import By
 import time
 import random
 import os
-from untils import generate_content, generate_to_voice, generate_image, generate_video_by_image, concact_content_videos, count_folders
+from untils import generate_content, generate_to_voice, generate_image, generate_video_by_image, concact_content_videos, count_folders, generate_thumbnail
+import concurrent.futures
+from data import gif_paths, person_img_paths 
 
 try:
     browser = webdriver.Chrome()
@@ -83,10 +85,14 @@ try:
     except:
         print('folder existed')
 
+    # random number to get image and gif
+    index_path = random.randint(0, 3)
+    gif_path = gif_paths[index_path]
+    person_img_path = person_img_paths[index_path]
+
     #import images
     path_videos = []
-    for key, item in enumerate(href_images):
-        print(item)
+    def process_image_and_video(item, key, path_folder):
         img_path = f"{path_folder}/image-{key}.jpg"
         img_blur_path = f"{path_folder}/image-blur-{key}.jpg"
         generate_image(item, img_path, img_blur_path)
@@ -96,20 +102,36 @@ try:
             img_path,
             img_blur_path,
             f'{path_folder}/video-{key}.mp4',
-            random_number
+            random_number,
+            gif_path
         )
-        path_videos.append(f"{path_folder}/video-{key}.mp4")
+        return f"{path_folder}/video-{key}.mp4"
+    
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = []
+        for key, item in enumerate(href_images):
+            futures.append(
+                executor.submit(process_image_and_video, item, key, path_folder)
+            )
+        
+        path_videos = [future.result() for future in concurrent.futures.as_completed(futures)]
 
-    # # generate title by ai
-    # title = generate_content(f'hãy đặt lại title youtube cho tôi: {title}')
-    # # generate content by ai
-    # content = generate_content(f'hay viết lại đoạn văn sau và có độ dài ký tự là {content.__len__()}: {content}')
-    # time.sleep(60)
-    # # generate tags
-    # tags = generate_content(f'hãy gợi ý tags để tui gắn vào youtube, title của video là {title}, content là {content}')
+    # generate title by ai
+    title = generate_content(f'hãy đặt lại title youtube cho tôi: {title}')
+    # generate content by ai
+    content = generate_content(f'hay viết lại đoạn văn sau và có độ dài ký tự là {content.__len__()}: {content}')
+    time.sleep(60)
+    # generate tags
+    tags = generate_content(f'hãy gợi ý tags để tui gắn vào youtube, title của video là {title}, content là {content}')
+
+    # generate thumbnail by ai
+    for key, item in enumerate(href_images):
+        img_path = f"{path_folder}/image-{key}.jpg"
+        img_blur_path = f"{path_folder}/image-blur-{key}.jpg"
+        img_thumbnail = f"{path_folder}/thumbnail-{key}.jpg"
+        generate_thumbnail(img_path, img_blur_path, person_img_path, img_thumbnail, title.replace('*', ''))
 
     # generate voice ---------------------------------------
-    generate_to_voice(title, f"{path_folder}/title-voice.mp3")
     generate_to_voice(content, f"{path_folder}/content-voice.mp3")
 
     # concact content video ---------------------------------------
@@ -121,7 +143,7 @@ try:
         file.write(f"link: {href}.\n")
         file.write(f"title: {title}\n")
         file.write(f"content: {content}\n")
-        # file.write(f"tags: {tags}\n")
+        file.write(f"tags: {tags}\n")
         
     print('title')
     print(title)
